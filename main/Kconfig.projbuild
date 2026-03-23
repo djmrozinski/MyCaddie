@@ -1,0 +1,20 @@
+﻿menu "Golf Cart Controller"
+
+    config GCC_MAX_SPEED_PCT
+        int "Maximum motor speed (0-100%)"
+        default 80
+        range 0 100
+        help
+            Hard cap on motor PWM duty cycle as a safety limit.
+
+    config GCC_FOLLOW_ME_DISTANCE_CM
+        int "Follow-me target distance (cm)"
+        default 150
+        range 50 1000
+
+    config GCC_BLE_WATCHDOG_MS
+        int "BLE watchdog timeout (ms)"
+        default 500
+        range 100 5000
+
+endmenu
