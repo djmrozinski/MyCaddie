@@ -1,4 +1,4 @@
-﻿menu "Golf Cart Controller"
+menu "Golf Cart Controller"
 
     config GCC_MAX_SPEED_PCT
         int "Maximum motor speed (0-100%)"

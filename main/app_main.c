@@ -15,7 +15,7 @@ static const char *TAG = "app_main";
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Golf Cart Controller starting...");
+    ESP_LOGI(TAG, "MyCaddie starting...");
     motor_driver_init();
     // ble_server_init();   // Uncomment for Phase 2
     // imu_driver_init();   // Uncomment for Phase 3

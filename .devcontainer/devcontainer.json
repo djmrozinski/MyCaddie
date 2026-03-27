@@ -1,0 +1,121 @@
+{
+  // ── Container identity ────────────────────────────────────────────────────
+  "name": "MyCaddie – ESP32-S3 / ESP-IDF v5.3",
+
+  // ── Build: use our local Dockerfile ──────────────────────────────────────
+  "build": {
+    "dockerfile": "Dockerfile",
+    // context is the repo root so COPY/ADD instructions in the Dockerfile
+    // can reference project files if needed in the future.
+    "context": ".."
+  },
+
+  // ── Workspace ─────────────────────────────────────────────────────────────
+  // Mount the repo root into /workspace (matches WORKDIR in the Dockerfile).
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+
+  // ── Run as root ───────────────────────────────────────────────────────────
+  // The espressif/idf base image runs as root; keeping root avoids permission
+  // issues with the pre-installed toolchains in /opt/esp.
+  "remoteUser": "root",
+
+  // ── Container runtime flags ───────────────────────────────────────────────
+  "runArgs": [
+    // --privileged is required to open serial/USB devices on a Linux host.
+    // On macOS, Docker Desktop uses a Linux VM and USB passthrough is NOT
+    // handled by this flag alone – see the "Flashing on macOS" note below.
+    "--privileged"
+  ],
+
+  // ── USB / Serial passthrough note ────────────────────────────────────────
+  // ┌─ macOS (Docker Desktop) ───────────────────────────────────────────────┐
+  // │  Docker Desktop for Mac runs containers inside a Linux VM.  The host's │
+  // │  /dev/tty.usbserial-* or /dev/cu.* devices are NOT visible inside the  │
+  // │  container via a simple bind mount.                                     │
+  // │                                                                         │
+  // │  RECOMMENDED FLASHING WORKFLOW ON macOS:                                │
+  // │    1. Build inside this container (idf.py build)                        │
+  // │    2. Open a HOST terminal (not the VS Code integrated terminal)        │
+  // │    3. Install esptool on the host once:  pip install esptool            │
+  // │    4. Flash from the host:                                              │
+  // │         cd /Users/djmrozinski/Desktop/Projects/MyCaddie                 │
+  // │         python -m esptool --chip esp32s3 \                             │
+  // │           -p /dev/tty.usbserial-XXXX \                                 │
+  // │           write_flash @build/flash_args                                 │
+  // │    OR use idf.py on the host if you have ESP-IDF installed natively.   │
+  // │                                                                         │
+  // │  LINUX HOST: uncomment the mounts block below and Docker will expose   │
+  // │  /dev/ttyUSB0 (or similar) directly to the container.                  │
+  // └─────────────────────────────────────────────────────────────────────────┘
+
+  // Uncomment on a Linux host to pass serial devices into the container:
+  // "mounts": [
+  //   "source=/dev,target=/dev,type=bind,consistency=cached"
+  // ],
+
+  // ── VS Code customisations ────────────────────────────────────────────────
+  "customizations": {
+    "vscode": {
+
+      // Extensions installed automatically when the container starts.
+      "extensions": [
+        "espressif.esp-idf-extension",    // Official ESP-IDF integration
+        "ms-vscode.cpptools",             // C/C++ IntelliSense & debugging
+        "ms-vscode.cpptools-extension-pack", // CMake, makefiles, etc.
+        "twxs.cmake",                     // CMake syntax highlighting
+        "ms-vscode.cmake-tools"           // CMake configure/build UI
+      ],
+
+      "settings": {
+
+        // ── ESP-IDF extension paths ─────────────────────────────────────────
+        // IDF_PATH inside the espressif/idf image is /opt/esp/idf.
+        "idf.espIdfPath": "/opt/esp/idf",
+
+        // IDF_TOOLS_PATH must be /opt/esp (the PARENT of the tools/ sub-dir).
+        // A common mistake is to set this to /opt/esp/tools – that breaks
+        // the extension's ability to locate toolchains.
+        "idf.toolsPath": "/opt/esp",
+
+        // Stable Python symlink created by the Dockerfile RUN step.
+        // Points to the venv binary inside /opt/esp/python_env/idf*_py*_env/.
+        "idf.pythonBinPath": "/usr/local/bin/idf-python",
+
+        "idf.gitPath": "/usr/bin/git",
+
+        // Target chip – used by "idf.py set-target" and the extension UI.
+        // Both keys are kept for compatibility across extension versions.
+        "idf.adapterTargetName": "esp32s3",
+        "idf.target": "esp32s3",
+
+        // OpenOCD board config for ESP32-S3 with the built-in USB-JTAG adapter.
+        // Change to "board/esp32s3-ftdi.cfg" if you use an external JTAG probe.
+        "idf.openOcdConfigs": [
+          "board/esp32s3-builtin.cfg"
+        ],
+
+        // ── C/C++ IntelliSense ──────────────────────────────────────────────
+        // compile_commands.json is generated by CMake during idf.py build.
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+
+        // ── Integrated terminal ─────────────────────────────────────────────
+        // Force a bash LOGIN shell so that /root/.profile is sourced,
+        // which in turn sources export.sh and puts idf.py on PATH.
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash",
+            "args": ["-l"]
+          }
+        }
+      }
+    }
+  },
+
+  // ── Post-create setup ─────────────────────────────────────────────────────
+  // Runs once after the container is first created (not on every start).
+  //   • Upgrade idf-component-manager to the latest release
+  //   • Print a sanity-check showing the active IDF version
+  "postCreateCommand": "pip install 'idf-component-manager~=2.2' && idf.py --version && echo '✅  MyCaddie ESP32-S3 dev container is ready!'"
+}
