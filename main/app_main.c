@@ -1,5 +1,5 @@
 ﻿/*
- * Golf Cart Controller - app_main.c
+ * MyCaddie - app_main.c
  * ESP32-S3 | ESP-IDF v5.x
  */
 #include <stdio.h>

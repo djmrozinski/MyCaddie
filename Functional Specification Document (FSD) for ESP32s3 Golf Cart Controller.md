@@ -1,4 +1,4 @@
-**Functional Specification Document (FSD) for ESP32s3 Golf Cart Controller**
+**Functional Specification Document (FSD) for ESP32s3  MyCaddie**
 
 
 

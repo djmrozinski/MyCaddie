@@ -1,4 +1,4 @@
-﻿# Golf Cart Controller â€” ESP32-S3
+﻿# MyCaddie â€” ESP32-S3
 
 Motorized two-wheel differential drive module for a push golf cart.
 Supports manual BLE remote control via iPhone and an autonomous "follow me" mode.
