@@ -7,6 +7,8 @@
 #include "driver/ledc.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <stdlib.h>
 
 static const char *TAG = "motor_driver";
@@ -23,6 +25,20 @@ static const char *TAG = "motor_driver";
 #define LEDC_CH_LEFT        LEDC_CHANNEL_0
 #define LEDC_CH_RIGHT       LEDC_CHANNEL_1
 #define DUTY_MAX            1023
+#define DIR_CHANGE_RAMP_MAX_PCT  50   /* ramp to this % or below before toggling direction */
+#define DIR_CHANGE_RAMP_STEP_PCT  5   /* duty step size per ramp tick                      */
+#define DIR_CHANGE_RAMP_DELAY_MS  10  /* delay between ramp steps (ms)                     */
+
+/* Per-motor runtime state for direction-change ramp protection */
+static motor_dir_t s_current_dir[2]  = { MOTOR_FORWARD, MOTOR_FORWARD };
+static uint8_t     s_current_pct[2]  = { 0, 0 };
+
+static void set_duty_raw(ledc_channel_t ch, uint8_t pct)
+{
+    uint32_t duty = (pct * DUTY_MAX) / 100;
+    ledc_set_duty(LEDC_MODE, ch, duty);
+    ledc_update_duty(LEDC_MODE, ch);
+}
 
 void motor_driver_init(void)
 {
@@ -61,12 +77,32 @@ void motor_set(motor_side_t side, motor_dir_t dir, uint8_t speed_pct)
 {
     uint8_t max = CONFIG_GCC_MAX_SPEED_PCT;
     if (speed_pct > max) speed_pct = max;
-    uint32_t duty = (speed_pct * DUTY_MAX) / 100;
-    ledc_channel_t ch  = (side == MOTOR_LEFT) ? LEDC_CH_LEFT : LEDC_CH_RIGHT;
-    int dir_gpio        = (side == MOTOR_LEFT) ? MOTOR_L_DIR_GPIO : MOTOR_R_DIR_GPIO;
+
+    ledc_channel_t ch = (side == MOTOR_LEFT) ? LEDC_CH_LEFT : LEDC_CH_RIGHT;
+    int dir_gpio      = (side == MOTOR_LEFT) ? MOTOR_L_DIR_GPIO : MOTOR_R_DIR_GPIO;
+
+    /* Direction-change protection: ramp down to DIR_CHANGE_RAMP_MAX_PCT before
+     * toggling the direction GPIO — required to avoid destroying the RioRand
+     * power transistors under hard commutation reversal at speed. */
+    if (dir != s_current_dir[side] && s_current_pct[side] > DIR_CHANGE_RAMP_MAX_PCT) {
+        ESP_LOGD(TAG, "Dir change motor %d: ramping %d%% → %d%%",
+                 side, s_current_pct[side], DIR_CHANGE_RAMP_MAX_PCT);
+        int ramp = (int)s_current_pct[side];
+        while (ramp > DIR_CHANGE_RAMP_MAX_PCT) {
+            ramp -= DIR_CHANGE_RAMP_STEP_PCT;
+            if (ramp < DIR_CHANGE_RAMP_MAX_PCT) ramp = DIR_CHANGE_RAMP_MAX_PCT;
+            set_duty_raw(ch, (uint8_t)ramp);
+            vTaskDelay(pdMS_TO_TICKS(DIR_CHANGE_RAMP_DELAY_MS));
+        }
+        s_current_pct[side] = (uint8_t)ramp;
+    }
+
+    /* Now safe to toggle direction and apply target speed */
     gpio_set_level(dir_gpio, (dir == MOTOR_FORWARD) ? 0 : 1);
-    ledc_set_duty(LEDC_MODE, ch, duty);
-    ledc_update_duty(LEDC_MODE, ch);
+    s_current_dir[side] = dir;
+
+    set_duty_raw(ch, speed_pct);
+    s_current_pct[side] = speed_pct;
 }
 
 void motor_stop_all(void)
@@ -75,6 +111,8 @@ void motor_stop_all(void)
     ledc_set_duty(LEDC_MODE, LEDC_CH_RIGHT, 0);
     ledc_update_duty(LEDC_MODE, LEDC_CH_LEFT);
     ledc_update_duty(LEDC_MODE, LEDC_CH_RIGHT);
+    s_current_pct[MOTOR_LEFT]  = 0;
+    s_current_pct[MOTOR_RIGHT] = 0;
 }
 
 void motor_drive(int8_t throttle, int8_t steering)
