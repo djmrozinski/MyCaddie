@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include <stdlib.h>
 
 static const char *TAG = "motor_driver";
@@ -125,4 +126,56 @@ void motor_drive(int8_t throttle, int8_t steering)
     if (right < -100) right = -100;
     motor_set(MOTOR_LEFT,  left  >= 0 ? MOTOR_FORWARD : MOTOR_REVERSE, (uint8_t)abs(left));
     motor_set(MOTOR_RIGHT, right >= 0 ? MOTOR_FORWARD : MOTOR_REVERSE, (uint8_t)abs(right));
+}
+
+/* ---------------------------------------------------------------------------
+ * Phase 2 — motor control task + BLE watchdog
+ * ---------------------------------------------------------------------------
+ * The queue holds a single entry. motor_ctrl_post() uses xQueueOverwrite()
+ * so a newer BLE command always displaces a stale unread one. The task blocks
+ * on the queue with a timeout equal to GCC_BLE_WATCHDOG_MS; if no command
+ * arrives in that window it calls motor_stop_all() as a fail-safe.
+ * --------------------------------------------------------------------------- */
+
+typedef struct { int8_t throttle; int8_t steering; } motor_cmd_t;
+
+static QueueHandle_t s_cmd_queue = NULL;
+
+#define MOTOR_CTRL_TASK_PRIORITY  5
+#define MOTOR_CTRL_TASK_STACK     2048
+#define MOTOR_CTRL_TASK_CORE      1
+
+static void motor_ctrl_task(void *arg)
+{
+    motor_cmd_t cmd;
+    while (1) {
+        if (xQueueReceive(s_cmd_queue, &cmd,
+                          pdMS_TO_TICKS(CONFIG_GCC_BLE_WATCHDOG_MS)) == pdTRUE) {
+            motor_drive(cmd.throttle, cmd.steering);
+        } else {
+            /* Watchdog fired — no command within the timeout window */
+            ESP_LOGW(TAG, "BLE watchdog: no command for %dms, stopping motors",
+                     CONFIG_GCC_BLE_WATCHDOG_MS);
+            motor_stop_all();
+        }
+    }
+}
+
+void motor_ctrl_start(void)
+{
+    s_cmd_queue = xQueueCreate(1, sizeof(motor_cmd_t));
+    configASSERT(s_cmd_queue);
+    xTaskCreatePinnedToCore(motor_ctrl_task, "motor_ctrl",
+                            MOTOR_CTRL_TASK_STACK, NULL,
+                            MOTOR_CTRL_TASK_PRIORITY, NULL,
+                            MOTOR_CTRL_TASK_CORE);
+    ESP_LOGI(TAG, "Motor control task started (watchdog %dms)",
+             CONFIG_GCC_BLE_WATCHDOG_MS);
+}
+
+bool motor_ctrl_post(int8_t throttle, int8_t steering)
+{
+    if (!s_cmd_queue) return false;
+    motor_cmd_t cmd = { .throttle = throttle, .steering = steering };
+    return xQueueOverwrite(s_cmd_queue, &cmd) == pdTRUE;
 }

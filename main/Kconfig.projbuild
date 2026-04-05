@@ -17,4 +17,64 @@ menu "MyCaddie"
         default 500
         range 100 5000
 
+    config GCC_LOW_BATTERY_MV
+        int "Low battery threshold (mV)"
+        default 32000
+        range 0 40000
+        help
+            Battery voltage below this level triggers motor stop and iPhone alert.
+            Default 32000 mV = 32V (suitable for a 36V Li-ion pack near empty).
+
+    config GCC_BATT_ADC_GPIO
+        int "Battery monitor ADC GPIO"
+        default 7
+        range 1 10
+        help
+            GPIO number connected to the battery voltage divider output.
+            Must be an ADC1-capable pin (GPIO 1-10 on ESP32-S3).
+            TODO: Set to match your actual hardware wiring.
+
+    config GCC_IMU_SDA_GPIO
+        int "BNO08x IMU I2C SDA GPIO"
+        default 11
+        help
+            I2C SDA pin for BNO08x. Default 11. TODO: set to match hardware.
+
+    config GCC_IMU_SCL_GPIO
+        int "BNO08x IMU I2C SCL GPIO"
+        default 12
+        help
+            I2C SCL pin for BNO08x. Default 12. TODO: set to match hardware.
+
+    config GCC_IMU_I2C_ADDR
+        hex "BNO08x I2C address"
+        default 0x4A
+        help
+            0x4A when SA0 pin is low (default), 0x4B when SA0 is high.
+
+    config GCC_FM_RSSI_REF_DBM
+        int "Follow-me: RSSI at 1 m reference (dBm, negative)"
+        default -55
+        range -90 -20
+        help
+            Measured or estimated RSSI when the iPhone is exactly 1 metre from
+            the cart. Calibrate on your hardware by holding the phone 1 m away
+            and noting the logged RSSI value.
+
+    config GCC_FM_PATH_LOSS_N10
+        int "Follow-me: path loss exponent × 10"
+        default 25
+        range 10 40
+        help
+            Path loss exponent n scaled by 10 (e.g. 25 = n 2.5).
+            Use 20 (n=2.0) for open outdoor, 25-30 for mixed environments.
+
+    config GCC_FM_DEADBAND_CM
+        int "Follow-me: distance deadband (cm)"
+        default 30
+        range 5 200
+        help
+            Cart will not move when distance error is within this band around
+            the target distance.
+
 endmenu
